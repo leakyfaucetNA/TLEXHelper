@@ -1,8 +1,8 @@
-## Interface: 120001
+## Interface: 120001 120005
 ## Title: TLEX Helper
 ## Notes: Shows the current TLEX loadout and warns when talents don't match the instance type.
 ## Author: leaky
-## Version: 1.0
+## Version: 1.01
 ## Dependencies: TalentLoadoutsEx
 ## SavedVariablesPerCharacter: TLEXHelperDB
 
