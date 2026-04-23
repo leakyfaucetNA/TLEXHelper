@@ -379,57 +379,73 @@ local function ParseTalentText(text)
     return dict
 end
 
+-- Memoize the resolved loadout name for the duration of one "state window".
+-- CurrentLoadoutName is hit from several paths — Refresh, RefreshSettingsActive,
+-- the retry ticker's condition check, the alert ticker — so a single zone event
+-- can drive a dozen lookups, each running the whole serialize-and-compare
+-- pipeline. Caching positive results keeps subsequent lookups O(1) until the
+-- next real talent/spec change. We don't cache nils so the retry loop can
+-- keep polling while data is still arriving from the server.
+local cachedName
+
 local function InvalidateParseCache()
     parsedCache = {}
+    cachedName  = nil
 end
 ns.InvalidateParseCache = InvalidateParseCache
 
--- Does the currently active talent config match this saved text?
--- Same comparison as TLEX's IsTextLoaded fallback branch: for every saved
--- entry, the current entry with the same selectionEntryID must exist and
--- have matching ranksGranted / ranksPurchased.
-local function CurrentMatchesText(savedText)
-    local current = GetCurrentExportString()
-    if not current then return false end
-
-    local curDict   = ParseTalentText(current)
-    local savedDict = ParseTalentText(savedText)
-    if not curDict or not savedDict then return false end
-
-    for selID, savedEntry in pairs(savedDict) do
-        local curEntry = curDict[selID]
-        if not curEntry
-           or savedEntry.ranksGranted  ~= curEntry.ranksGranted
-           or savedEntry.ranksPurchased ~= curEntry.ranksPurchased then
-            return false
-        end
-    end
-    return true
-end
-
 function ns.CurrentLoadoutName()
+    if cachedName then return cachedName end
+
     -- Fast path: TLEX's own API, if its loadedDataList is populated.
     if _G.TLX and _G.TLX.GetLoadedData then
         local data = _G.TLX.GetLoadedData()
-        if data and data.name then return data.name end
+        if data and data.name then
+            cachedName = data.name
+            return data.name
+        end
     end
 
     local specIdx = C_SpecializationInfo.GetSpecialization()
     if not specIdx then return nil end
 
-    -- First try exact string match — cheap, and catches native-exported strings.
     local current = GetCurrentExportString()
-    if current then
-        for _, data in ipairs(ns.GetLoadoutsForSpec(specIdx)) do
-            if data.text == current then return data.name end
+    if not current then return nil end
+
+    local loadouts = ns.GetLoadoutsForSpec(specIdx)
+
+    -- Exact string match first — cheap and catches native-exported strings.
+    for _, data in ipairs(loadouts) do
+        if data.text == current then
+            cachedName = data.name
+            return data.name
         end
     end
 
-    -- Fuzzy fallback: compare parsed node entries. Handles the common case
-    -- where saved strings were imported from tools that zero out the tree hash
-    -- (wowhead, raidbots, etc.), so the header differs but the content matches.
-    for _, data in ipairs(ns.GetLoadoutsForSpec(specIdx)) do
-        if CurrentMatchesText(data.text) then return data.name end
+    -- Fuzzy fallback: parse current once and compare against each saved parse.
+    -- Prior versions re-serialized the active config and re-parsed it per
+    -- loadout, turning one lookup into N+1 full serializations.
+    local curDict = ParseTalentText(current)
+    if not curDict then return nil end
+
+    for _, data in ipairs(loadouts) do
+        local savedDict = ParseTalentText(data.text)
+        if savedDict then
+            local matches = true
+            for selID, savedEntry in pairs(savedDict) do
+                local curEntry = curDict[selID]
+                if not curEntry
+                   or savedEntry.ranksGranted  ~= curEntry.ranksGranted
+                   or savedEntry.ranksPurchased ~= curEntry.ranksPurchased then
+                    matches = false
+                    break
+                end
+            end
+            if matches then
+                cachedName = data.name
+                return data.name
+            end
+        end
     end
     return nil
 end
@@ -648,15 +664,19 @@ local function StartRefreshRetry()
     local attempts = 0
     retryTicker = C_Timer.NewTicker(0.5, function(t)
         attempts = attempts + 1
+        -- Refresh / RefreshSettingsActive both call CurrentLoadoutName; the
+        -- in-function cache makes the later calls O(1). Resolve once up front
+        -- to use as the stop condition too.
+        local name = ns.CurrentLoadoutName()
         Refresh()
         if ns.RefreshSettingsActive then ns.RefreshSettingsActive() end
-        if ns.CurrentLoadoutName() then
+        if name then
             t:Cancel()
             retryTicker = nil
         elseif attempts >= 30 then
             t:Cancel()
             retryTicker = nil
-            print("|cff9999ff[TLEXHelper]|r gave up waiting for talent data after 15s. Run /tlxh debug to see what's missing.")
+            print("|cff9999ff[TLEXHelper]|r Your current talents don't match any saved TLEX loadout. That's fine if you've adjusted a build for this fight — run /tlxh debug if you expected a match.")
         end
     end)
 end

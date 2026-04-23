@@ -2,7 +2,7 @@
 ## Title: TLEX Helper
 ## Notes: Shows the current TLEX loadout and warns when talents don't match the instance type.
 ## Author: leaky
-## Version: 1.01
+## Version: 1.2.0
 ## Dependencies: TalentLoadoutsEx
 ## SavedVariablesPerCharacter: TLEXHelperDB
 
