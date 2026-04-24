@@ -5,6 +5,8 @@
 ## Version: 1.2.0
 ## Dependencies: TalentLoadoutsEx
 ## SavedVariablesPerCharacter: TLEXHelperDB
+## IconTexture: Interface\AddOns\TLEXHelper\LeakyLogo_64.tga
+## AddonCompartmentFunc: TLEXHelper_OnCompartmentClick
 
 main.lua
 settings.lua

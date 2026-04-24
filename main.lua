@@ -883,3 +883,63 @@ SlashCmdList.TLEXHELPER = function(msg)
         print("|cff9999ffTLEXHelper:|r /tlxh [show|hide|status|config|debug|alert]")
     end
 end
+
+-- -------------------------------------------------- --
+--  Addon Compartment + Blizzard Settings panel       --
+-- -------------------------------------------------- --
+
+-- Called by the TOC's AddonCompartmentFunc directive when the player clicks
+-- the TLEX Helper icon in the top-of-minimap addon compartment.
+function TLEXHelper_OnCompartmentClick(_, _)
+    if ns.ToggleSettings then ns.ToggleSettings() end
+end
+
+-- Shared parent category for all "leaky" addons in Interface > Options > AddOns.
+-- First addon to load creates it and parks it on _G so sibling addons reuse it.
+local function GetLeakyParentCategory()
+    if _G.LeakyAddonsSettingsCategory then return _G.LeakyAddonsSettingsCategory end
+    if not Settings or not Settings.RegisterVerticalLayoutCategory then return nil end
+
+    local category = Settings.RegisterVerticalLayoutCategory("Leaky Addons")
+    Settings.RegisterAddOnCategory(category)
+    _G.LeakyAddonsSettingsCategory = category
+    return category
+end
+
+local function RegisterSettingsSubcategory()
+    local parent = GetLeakyParentCategory()
+    if not parent or not Settings.RegisterCanvasLayoutSubcategory then return end
+
+    local panel = CreateFrame("Frame")
+    panel.name = "TLEX Helper"
+
+    local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", 16, -16)
+    title:SetText("TLEX Helper")
+
+    local blurb = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    blurb:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
+    blurb:SetPoint("RIGHT", panel, "RIGHT", -16, 0)
+    blurb:SetJustifyH("LEFT")
+    blurb:SetText("Tag TLEX loadouts by instance type and get a nudge when you zone in on the wrong spec.")
+
+    local btn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    btn:SetPoint("TOPLEFT", blurb, "BOTTOMLEFT", 0, -16)
+    btn:SetSize(200, 26)
+    btn:SetText("Open TLEX Helper")
+    btn:SetScript("OnClick", function()
+        if ns.ToggleSettings then ns.ToggleSettings() end
+    end)
+
+    Settings.RegisterCanvasLayoutSubcategory(parent, panel, "TLEX Helper")
+end
+
+-- Register after PLAYER_LOGIN so Settings and the shared category global are
+-- both stable. Hook in via a one-shot frame rather than adding another branch
+-- to the main event handler.
+local regFrame = CreateFrame("Frame")
+regFrame:RegisterEvent("PLAYER_LOGIN")
+regFrame:SetScript("OnEvent", function(self)
+    self:UnregisterAllEvents()
+    RegisterSettingsSubcategory()
+end)
